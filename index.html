@@ -57,7 +57,7 @@ input{flex:1;min-width:0}
 <div id="map"></div>
 
 <div class="top">
-  <div class="title"><span class="dot" id="conn"></span>車隊即時地圖</div>
+  <div class="title"><span class="dot" id="conn"></span>車隊即時地圖<span id="viewers" style="font-weight:500;opacity:.85;font-size:13px"></span></div>
   <div class="tools">
     <button class="tbtn" id="btnRoute">路線</button>
     <button class="tbtn" id="btnAll">全部車</button>
@@ -196,7 +196,7 @@ function connect(){
   let everConnected = false;
   client.on('connect', ()=>{
     everConnected = true; connEl.className='dot on';
-    client.subscribe(BASE+'+', {qos:0});
+    client.subscribe(BASE+'+', {qos:0}); client.subscribe(PRES+'+', {qos:0}); beat(true);
     if (lastPos) publish(true);
   });
   client.on('reconnect', ()=>{ connEl.className='dot'; });
@@ -207,6 +207,7 @@ function connect(){
     if (!everConnected){ client.end(true); brokerIdx=(brokerIdx+1)%BROKERS.length; setTimeout(connect, 1000); }
   });
   client.on('message', (topic, payload)=>{
+    if (topic.startsWith(PRES)) { onBeat(topic.slice(PRES.length)); return; }
     const n = +topic.slice(BASE.length);
     if (!(n>=1 && n<=NCARS)) return;
     const txt = payload.toString();
@@ -220,6 +221,14 @@ function connect(){
     }catch(e){}
   });
 }
+// ---------- viewer count ----------
+const PRES = 'tuku-huwei-convoy/' + ROOM + '/presence/';
+const MYID = Math.random().toString(36).slice(2,10);
+const seen = {}; let lastBeat = 0;
+function beat(force){ if(!client || !client.connected) return; const now=Date.now(); if(!force && now-lastBeat<3000) return; lastBeat=now; client.publish(PRES+MYID, '1', {qos:0}); }
+function onBeat(id){ const isNew=!seen[id]; seen[id]=Date.now(); if(isNew && id!==MYID) beat(false); showViewers(); }
+function showViewers(){ const now=Date.now(); let n=0; for(const k in seen){ if(now-seen[k]<50000) n++; else delete seen[k]; } const v=document.getElementById('viewers'); if(v) v.textContent = n ? ' · ' + n + ' 人在看' : ''; }
+setInterval(()=>beat(true), 20000); setInterval(showViewers, 5000);
 connect();
 
 // ---------- sharing ----------
